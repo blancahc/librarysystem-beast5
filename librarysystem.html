@@ -1,0 +1,187 @@
+<script src="../tinytest.js"></script>   
+
+<script>
+(function() {
+    var libraryStorage = {};
+    var libraryHold = {};
+    function librarySystem(libraryName, dependencies, callback) {
+      if (typeof libraryName !== 'string') {
+        throw new TypeError(`libraryName is not a string`)
+      };
+      if (dependencies && !Array.isArray(dependencies)) {
+        throw new TypeError(`dependencies is not an array`)
+      };
+      if (callback && typeof callback !== 'function') {
+        throw new TypeError(`callback is not a function`)
+      };
+      //HELPER FUNCTIONS
+      //function attempt to createLibrary
+      function createLibrary(libraryName, dependencies, callback) {
+          var returnOfDependencies = [];
+        //for i < dependencies.length... 
+        for (var i = 0; i < dependencies.length; i++) {
+          //If the dependecies[i] library is already loaded, push onto the returnDependencies array (you will end up with an array of return values of the dependency libraries)
+          if (libraryStorage[dependencies[i]] !== undefined) {
+            returnOfDependencies.push(librarySystem(dependencies[i]));
+          } else {
+            //check that the library doesn't already exist in libraryHold
+            if(!((dependencies[i]) in libraryHold)) {
+              return libraryHold[libraryName] = [libraryName, dependencies, callback];
+            }
+          }
+        }  
+        //It will save libraryName as a parameter to the libraryStorage and its key as the return value of callback
+        //applies the returnOfDependencies as the arguments of the callback
+        libraryStorage[libraryName] = callback.apply(this, returnOfDependencies);
+        //It will then check that the first library in libraryHold (if any) has all of its dependencies loaded (if they exist in libraryStorage), then delete the library from libraryHold
+        if(Object.keys(libraryHold).length > 0){
+          var firstLibHoldName = Object.keys(libraryHold)[0];
+          var firstLibHoldDependencies = libraryHold[firstLibHoldName][1];
+          var firstLibCallback = libraryHold[firstLibHoldName][2];
+          for(var m = 0; m < firstLibHoldDependencies.length; m++){
+            if (!libraryStorage[firstLibHoldDependencies[m]]){
+              return
+            } else {
+              delete libraryHold[firstLibHoldName]
+              createLibrary(firstLibHoldName, firstLibHoldDependencies, firstLibCallback);
+            }
+          }
+        }
+      }
+      //Create the library if > 1 arguments are passed into librarySystem() and if the library doesn't exist yet (this avoid loading a library twice)
+      if (arguments.length > 1 && !(libraryStorage[libraryName])) {
+        createLibrary(libraryName, dependencies, callback)
+      } else {
+      //Return the library if only one argument is passed into the librarySystem()
+        return libraryStorage[libraryName];
+      }
+    }
+    window.librarySystem = librarySystem;
+})();
+
+tests({
+  'It returns TypeError if the first parameter, `libraryName` is not a string.': function() {
+    var isTypeError = false;
+    try{
+      librarySystem([]);
+    }catch(e) {
+      isTypeError = e instanceof TypeError;
+    }
+    eq(isTypeError, true);
+  },
+  'It returns a TypeError if the second optional parameter, `dependencies`, is not an array.': function() {
+    var isTypeError = false;
+    try{
+      librarySystem('testLibrary', 'test');
+    }catch(e) {
+      isTypeError = e instanceof TypeError;
+    }
+    eq(isTypeError, true);
+  },
+  'It should return a TypeError if the `callback` is not a function.': function() {
+    var isTypeError = false;
+    try{
+      librarySystem('testLibrary', 'test', 1);
+    }catch(e) {
+      isTypeError = e instanceof TypeError;
+    }
+    eq(isTypeError, true);
+  },
+  'If it has a libraryName, an array of dependencies, and a callback, then the library should be created with the information provided.': function() {
+    librarySystem('name', [], function() {
+      return 'Blanca'});
+    var result = librarySystem('name')
+    eq(result, 'Blanca');
+  },
+  'If only the library name is given, it should return the return value of its callback.': function() {
+    var result = librarySystem('name')
+    eq(result, 'Blanca');
+  },
+  'It should be able to create the dendencies and main library in that order.': function() {
+    librarySystem('name', [], function() {
+      return 'Blanca';
+    });
+
+    librarySystem('company', [], function() {
+      return 'Watch and Code';
+    });
+
+    librarySystem('workBlurb', ['name', 'company'], function(name, company) {
+      return name + ' works at ' + company;
+    });
+
+    var result = librarySystem('workBlurb');
+    eq(result, 'Blanca works at Watch and Code');
+    },
+  'It should be able to create the library and dependencies out of order when two libraries are involved (one with a dependency and the dependency library with no dependencies).': function() {
+    librarySystem('workB', ['name'], function(name) {
+      return name + ' works at a company';
+    });
+
+    librarySystem('name', [], function() {
+      return 'Blanca';
+    });
+
+    var result = librarySystem('workB'); 
+    eq(result, 'Blanca works at a company');
+  },
+  'It should be able to create the library and denpencies out of order when three libraries are involved (one with two dependencies and the dependency libraries with no dependencies)': function() {
+    librarySystem('workBlurb', ['name', 'company'], function(name, company) {
+      return name + ' works at ' + company;
+    });
+
+    librarySystem('name', [], function() {
+      return 'Blanca';
+    });
+
+    librarySystem('company', [], function() {
+      return 'Watch and Code';
+    });
+
+    var result = librarySystem('workBlurb'); 
+    eq(result, 'Blanca works at Watch and Code');
+  },
+  'It should be able to create the library and depedencies out of order when four libraries are involved (two with two dependencies and the dependency libraries with no dependencies)': function() {
+    librarySystem('myFavorites', ['color', 'food'], function(color, food) {
+      return 'My favorite color is ' + color + ' and my favorite food is ' + food;
+    });
+
+    librarySystem('color', [], function() {
+      return 'blue';
+    });
+    librarySystem('myColor', ['color'], function(color) {
+      return 'My favorite color is ' + color;
+    });
+    librarySystem('food', [], function() {
+      return 'tacos';
+    });
+    var result = librarySystem('myFavorites'); 
+    var result2 = librarySystem('myColor'); 
+    eq(result, 'My favorite color is blue and my favorite food is tacos');
+    eq(result2, 'My favorite color is blue')
+  },
+  'It should only load a library once, even if provided multiple times.':function () {
+    librarySystem('studyAt', ['myName', 'place'], function(myName, place) {
+      return myName + ' studies at ' + place;
+    });
+    librarySystem('myName', [], function() {
+      return 'Blanca';
+    });
+    librarySystem('place', [], function() {
+      return 'Watch and Code';
+    });
+    librarySystem('place', [], function() {
+      return 'nowhere';
+    });
+    librarySystem('studyAt', ['myName', 'place'], function(myName, place) {
+      return myName + ' studies ' + place;
+    });
+    librarySystem('myName', [], function() {
+      return 'who';
+    });
+    var result = librarySystem('studyAt'); 
+    eq(result, 'Blanca studies at Watch and Code');
+  }
+}); 
+</script>
+  
